@@ -1,7 +1,8 @@
 #!/bin/bash
 # firewall-verify.sh — Post-hardening verification checklist
 # Run this after any firewall hardening operation to confirm success criteria.
-# Exit code 0 = all critical checks passed. Exit code 1 = one or more failures.
+# Exit code 0 = all critical checks passed. Exit code 60 = one or more failures
+# (matches SKILL.md exit codes contract for verify failure → auto-rollback).
 
 set -euo pipefail
 
@@ -92,5 +93,5 @@ if [[ $ERRORS -eq 0 ]]; then
     exit 0
 else
     echo "$ERRORS critical check(s) failed. Review output above."
-    exit 1
+    exit 60  # Match SKILL.md Exit Codes core contract: "60 | Verify failed | Auto-rollback triggered"
 fi

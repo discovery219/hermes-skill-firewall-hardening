@@ -18,9 +18,10 @@ Choose the profile that matches your server's purpose, then adapt port numbers a
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 
-sudo ufw status | grep -q "22/tcp"  || sudo ufw allow 22/tcp
-sudo ufw status | grep -q "80/tcp"  || sudo ufw allow 80/tcp
-sudo ufw status | grep -q "443/tcp" || sudo ufw allow 443/tcp
+# Exact port match: awk extracts column 1, grep -qx prevents substring false-positives (e.g. 8022 matching "22/tcp")
+sudo ufw status | awk '{print $1}' | grep -qx "22/tcp"  || sudo ufw allow 22/tcp
+sudo ufw status | awk '{print $1}' | grep -qx "80/tcp"  || sudo ufw allow 80/tcp
+sudo ufw status | awk '{print $1}' | grep -qx "443/tcp" || sudo ufw allow 443/tcp
 
 sudo ufw limit 22/tcp
 sudo ufw --force enable
@@ -31,12 +32,28 @@ sudo ufw --force enable
 ```bash
 ZONE=$(sudo firewall-cmd --get-default-zone)
 
-sudo firewall-cmd --zone="$ZONE" --query-service=ssh   >/dev/null 2>&1 || sudo firewall-cmd --permanent --zone="$ZONE" --add-service=ssh
+# IMPORTANT: --add-service=ssh always maps to port 22. If your SSH runs on a non-standard
+# port, replace --add-service=ssh with --add-port=<port>/tcp below.
+SSH_PORT=$(ss -tlnp | grep -E "sshd|ssh" | awk '{print $NF}' | awk -F: '{print $NF}' | head -1)
+SSH_PORT=${SSH_PORT:-22}
+
+if [[ "$SSH_PORT" == "22" ]]; then
+    sudo firewall-cmd --zone="$ZONE" --query-service=ssh   >/dev/null 2>&1 || sudo firewall-cmd --permanent --zone="$ZONE" --add-service=ssh
+else
+    sudo firewall-cmd --zone="$ZONE" --query-port="${SSH_PORT}/tcp" >/dev/null 2>&1 || sudo firewall-cmd --permanent --zone="$ZONE" --add-port="${SSH_PORT}/tcp"
+fi
+
 sudo firewall-cmd --zone="$ZONE" --query-service=http  >/dev/null 2>&1 || sudo firewall-cmd --permanent --zone="$ZONE" --add-service=http
 sudo firewall-cmd --zone="$ZONE" --query-service=https >/dev/null 2>&1 || sudo firewall-cmd --permanent --zone="$ZONE" --add-service=https
 
-sudo firewall-cmd --zone="$ZONE" --query-rich-rule='rule service name=ssh limit value=3/m accept' >/dev/null 2>&1 || \
-  sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule='rule service name=ssh limit value=3/m accept'
+# Rich rule for SSH rate limiting — use explicit port if non-standard
+if [[ "$SSH_PORT" == "22" ]]; then
+    sudo firewall-cmd --zone="$ZONE" --query-rich-rule='rule service name=ssh limit value=3/m accept' >/dev/null 2>&1 || \
+      sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule='rule service name=ssh limit value=3/m accept'
+else
+    sudo firewall-cmd --zone="$ZONE" --query-rich-rule="rule family=ipv4 port port=${SSH_PORT} protocol=tcp limit value=3/m accept" >/dev/null 2>&1 || \
+      sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule="rule family=ipv4 port port=${SSH_PORT} protocol=tcp limit value=3/m accept"
+fi
 
 sudo firewall-cmd --reload
 ```
@@ -62,8 +79,12 @@ table inet filter {
         ct state invalid drop
         ip protocol icmp accept
         ip6 nexthdr icmpv6 accept
-        tcp dport @allowed_tcp_ports accept
+        # Set-based accept for web ports + SSH (no rate limit on set)
+        # SSH rate limiting: skip set match for port 22 so the rate-limited rule applies
+        tcp dport { 80, 443 } accept
         tcp dport 22 ct state new limit rate 10/second burst 20 packets accept
+        # Fallback: allow any remaining SSH in case rate limit doesn't match
+        tcp dport 22 accept
         log prefix "nft-drop: " limit rate 5/second
         drop
     }
@@ -130,6 +151,7 @@ sudo ip6tables-restore --test /tmp/web-v6.rules && sudo ip6tables-restore /tmp/w
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 
+# ufw is idempotent for source-restricted rules — re-running prints "Skipping adding existing rule"
 sudo ufw allow from 10.0.1.0/24 to any port 22 proto tcp
 sudo ufw allow from 10.0.2.0/24 to any port 3306 proto tcp
 sudo ufw --force enable
@@ -140,7 +162,15 @@ sudo ufw --force enable
 ```bash
 ZONE=$(sudo firewall-cmd --get-default-zone)
 
-sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule='rule family=ipv4 source address=10.0.1.0/24 service name=ssh accept'
+# Detect actual SSH port — --add-service=ssh always maps to 22
+SSH_PORT_DB=$(ss -tlnp | grep -E "sshd|ssh" | awk '{print $NF}' | awk -F: '{print $NF}' | head -1)
+SSH_PORT_DB=${SSH_PORT_DB:-22}
+
+if [[ "$SSH_PORT_DB" == "22" ]]; then
+    sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule='rule family=ipv4 source address=10.0.1.0/24 service name=ssh accept'
+else
+    sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule="rule family=ipv4 source address=10.0.1.0/24 port port=${SSH_PORT_DB} protocol=tcp accept"
+fi
 sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule='rule family=ipv4 source address=10.0.2.0/24 port port=3306 protocol=tcp accept'
 sudo firewall-cmd --reload
 ```
@@ -201,7 +231,9 @@ COMMIT
 ```bash
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
-sudo ufw allow 22/tcp
+
+# Exact port match: awk extracts column 1 to avoid substring false-positives (e.g., 8022 matching 22/tcp)
+sudo ufw status | awk '{print $1}' | grep -qx "22/tcp" || sudo ufw allow 22/tcp
 sudo ufw limit 22/tcp
 sudo ufw --force enable
 ```
@@ -210,8 +242,18 @@ sudo ufw --force enable
 
 ```bash
 ZONE=$(sudo firewall-cmd --get-default-zone)
-sudo firewall-cmd --permanent --zone="$ZONE" --add-service=ssh
-sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule='rule service name=ssh limit value=3/m accept'
+
+# Detect actual SSH port — --add-service=ssh always maps to 22
+SSH_PORT=$(ss -tlnp | grep -E "sshd|ssh" | awk '{print $NF}' | awk -F: '{print $NF}' | head -1)
+SSH_PORT=${SSH_PORT:-22}
+
+if [[ "$SSH_PORT" == "22" ]]; then
+    sudo firewall-cmd --permanent --zone="$ZONE" --add-service=ssh
+    sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule='rule service name=ssh limit value=3/m accept'
+else
+    sudo firewall-cmd --permanent --zone="$ZONE" --add-port="${SSH_PORT}/tcp"
+    sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule="rule family=ipv4 port port=${SSH_PORT} protocol=tcp limit value=3/m accept"
+fi
 sudo firewall-cmd --reload
 ```
 
