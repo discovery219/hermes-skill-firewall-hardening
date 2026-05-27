@@ -3,7 +3,7 @@ name: linux-firewall-hardening
 title: Linux Firewall Hardening
 description: Safe Linux firewall hardening with backend detection, idempotent atomic rules, rollback protection, and AI-executable state-machine workflows. Covers ufw, firewalld, nftables, iptables, Docker, Kubernetes CNI awareness, and fail2ban with compliance mapping to CIS/PCI-DSS/SOC2.
 license: Dual MIT / Apache-2.0
-skill_version: 2.1.0
+skill_version: 2.2.0
 schema_version: 2
 tags: [security, firewall, ufw, iptables, nftables, firewalld, hardening, docker, fail2ban, policy-as-code, devsecops, ipv6]
 ---

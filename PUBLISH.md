@@ -134,7 +134,38 @@ Define your intent in `references/declarative-policy.md` YAML format, then rende
 
 ## Version
 
-`skill_version: 2.1.0` | `schema_version: 2`
+`skill_version: 2.2.0` | `schema_version: 2`
+
+## Changelog
+
+### v2.2.0 — SkillOpt Double-Epoch Optimization (2026-05-21)
+
+Optimized via Microsoft SkillOpt ReflACT pipeline with Claude Opus 4.7 as optimizer, DeepSeek V4 as agent. Two epochs, 20 test cases (15 training + 5 held-out validation). Baseline: 20/20 functional. All patches were quality/documentation/correctness improvements — functionality remained 100% throughout.
+
+**Epoch 1 (LR=0.7, 7 patches):**
+
+| # | Priority | Issue | Fix |
+|---|:--------:|-------|-----|
+| 1 | P0 | Exit code tables diverged between SKILL.md and special-environments.md (21=K8s vs 21=Container swapped) | Synced special-environments.md to SKILL.md canonical table + added source-of-truth annotation |
+| 2 | P0 | Rollback section referenced dead "see previous version" | Replaced with complete at/systemd-run scheduling script inline |
+| 3 | P0 | VERIFY referenced non-existent `scripts/manual-rollback.sh` | Replaced with actual restore command sequence (iptables-restore → nft -f → ufw reset) |
+| 4 | P1 | iptables/nftables/firewalld backend refs all hardcoded SSH port 22 | Added SSH_PORT detection preamble to all three non-UFW backends |
+| 5 | P1 | Pre-flight "Second SSH session open and idle" unexplained | Expanded with verification step (`sudo whoami`) + conntrack survival explanation |
+| 6 | P1 | remaining-improvements.md claimed state persistence both implemented AND not implemented | Clarified: schema documented but no auto-generation script exists |
+| 7 | P2 | Locked-out operator had to read 3 sections for recovery steps | Added 🚨 Emergency quick-nav header after "When NOT to Use" |
+
+**Epoch 2 (LR=0.3, 3 patches):**
+
+| # | Priority | Issue | Fix |
+|---|:--------:|-------|-----|
+| 8 | P1 | Security profiles used `grep -q "22/tcp"` (substring match — false-positives on 8022/2200) | All UFW profiles upgraded to `awk '{print $1}' \| grep -qx` exact match (consistent with main SKILL.md APPLY section) |
+| 9 | P1 | `firewall-verify.sh` exited code 1 on failure but SKILL.md exit code contract specifies 60 | Changed to `exit 60` + updated header comment |
+| 10 | P2 | Security profiles: firewalld hardcoded `--add-service=ssh` (port 22), nftables had dead rate-limiting code (accept before limit rule) | Added SSH_PORT detection + branching; fixed nftables rule ordering (split web ports + rate-limited SSH) |
+
+**Meta-learning from this optimization:**
+- Epoch 1 caught doc↔doc inconsistencies (cross-file drift from iterative development)
+- Epoch 2 caught code↔doc contract violations (implementation didn't match specification)
+- Pattern: surface fixes reveal deeper structural issues — each epoch peels one layer
 
 ## Compatibility Matrix
 
