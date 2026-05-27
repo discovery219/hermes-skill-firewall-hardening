@@ -2,6 +2,12 @@
 
 firewalld is zone-aware. Always specify the zone. Default on most servers is `public`.
 
+> **Detect your real SSH port first:** The examples below use port 22 for illustration. Replace with your actual port:
+> ```bash
+> SSH_PORT=$(ss -tlnp | grep -E "sshd|ssh" | awk '{print $NF}' | awk -F: '{print $NF}' | head -1)
+> SSH_PORT=${SSH_PORT:-22}
+> ```
+
 ## Detection
 
 ```bash

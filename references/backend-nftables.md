@@ -2,6 +2,12 @@
 
 nftables is the modern replacement for iptables. It supports IPv4 and IPv6 in a single `inet` table, has atomic ruleset replacement, and uses a cleaner syntax.
 
+> **Detect your real SSH port first:** The examples below use port 22 for illustration. Replace with your actual port:
+> ```bash
+> SSH_PORT=$(ss -tlnp | grep -E "sshd|ssh" | awk '{print $NF}' | awk -F: '{print $NF}' | head -1)
+> SSH_PORT=${SSH_PORT:-22}
+> ```
+
 ## Detection
 
 ```bash

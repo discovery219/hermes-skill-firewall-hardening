@@ -2,6 +2,14 @@
 
 Use atomic `iptables-restore` instead of `-F` followed by individual `-A` commands. Build a complete ruleset file, then swap it in one operation. Always manage IPv4 (`iptables`) and IPv6 (`ip6tables`) separately.
 
+> **Detect your real SSH port first:** The examples below use port 22 for illustration. If your SSH runs on a different port, replace `22` with your actual port:
+> ```bash
+> SSH_PORT=$(ss -tlnp | grep -E "sshd|ssh" | awk '{print $NF}' | awk -F: '{print $NF}' | head -1)
+> SSH_PORT=${SSH_PORT:-22}
+> echo "Detected SSH port: $SSH_PORT"
+> ```
+> Using the wrong SSH port in the ruleset below will lock you out.
+
 ## Key Principle: Atomic Restore
 
 ```bash

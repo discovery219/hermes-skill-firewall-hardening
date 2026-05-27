@@ -4,7 +4,7 @@
 
 Based on review in `problems.txt` v2 (10 refinement suggestions, targeting 9.0 → 9.5+):
 
-- [x] **State persistence file** — `.firewall-hardening/state.json` with state machine position, backup_dir, rollback_timer_id, plan_hash; 1-hour TTL; advisory-only (defaults to restarting from Detect)
+- [x] **State persistence file** — `.firewall-hardening/state.json` with state machine position, backup_dir, rollback_timer_id, plan_hash; 1-hour TTL; advisory-only (defaults to restarting from Detect). **Note**: Schema is documented in SKILL.md § State Persistence — agents must create `$STATE_DIR` and write `state.json` manually. No script auto-generates this yet.
 - [x] **Plan JSON schema** — machine-readable PLAN output schema documented in SKILL.md with `add`/`skip`/`remove` arrays, `approval_token`, `risk_assessment`
 - [x] **Exit code table moved to SKILL.md** — 15 exit codes (0–61) with agent action columns visible in main document
 - [x] **Plan approval gate** — `approval_token` (hash of plan content) required for APPLY; mismatch → exit 41
@@ -92,7 +92,7 @@ Based on review in `problems.txt`:
 ## Future Enhancements (Not yet implemented)
 
 1. **ShellCheck linting** — Add `.shellcheckrc` config and fix warnings in all scripts
-2. **State persistence file** — `.firewall-hardening-state.json` with current state, backup path, rollback job ID for interrupt-resume
+2. **State persistence auto-generation** — `firewall-plan.sh` or a dedicated script auto-creates `.firewall-hardening/state.json` (schema in SKILL.md § State Persistence). Currently agents must create it manually.
 3. **Bats test suite** — Container-based integration tests per backend
 4. **JSON Schema for declarative policy** — `references/policy-schema.json`
 5. **Golden output test runner** — Run renderer against fixtures, diff against expected

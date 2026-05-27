@@ -88,23 +88,24 @@ Environment detection that finds any of the above conditions should:
 
 ## Exit Codes (Standardized)
 
-All scripts in this skill use these standardized exit codes:
+> **Canonical source**: SKILL.md § Exit Codes (Core Contract). This table is a reference copy and must match.
 
 | Code | Name | Meaning |
 |------|------|---------|
 | 0 | SUCCESS | Operation completed successfully |
 | 1 | FAIL | Generic failure |
 | 10 | BACKEND_CONFLICT | Multiple active firewall frontends detected |
-| 11 | BACKEND_ABSENT | No firewall tools installed |
-| 12 | BACKEND_UNKNOWN | Cannot determine which backend is active |
+| 11 | BACKEND_ABSENT | No firewall backend could be detected |
+| 12 | BACKEND_UNKNOWN | Multiple backends active — cannot determine primary |
 | 20 | IAC_MANAGED | Firewall managed by external IaC (Terraform, Ansible, etc.) |
-| 21 | K8S_NODE | Kubernetes node detected — use NetworkPolicies |
-| 22 | CONTAINERIZED | Inside a container — cannot modify host firewall |
-| 30 | CONFIDENCE_LOW | Confidence below threshold for automatic execution |
-| 31 | UNTESTED_ENV | Environment not in compatibility matrix |
-| 40 | PREFLIGHT_FAIL | Pre-flight checks failed (e.g., no rollback available) |
-| 41 | BACKUP_FAIL | Could not create backup |
-| 42 | ROLLBACK_FAIL | Could not schedule rollback |
-| 50 | APPLY_FAIL | Rule application failed |
-| 51 | VERIFY_FAIL | Post-apply verification failed |
-| 60 | STATE_FILE_CORRUPT | State persistence file is unreadable or corrupt |
+| 21 | CONTAINERIZED | Inside a container — cannot modify host firewall |
+| 22 | K8S_NODE | Kubernetes node detected — use NetworkPolicies |
+| 30 | CONFIDENCE_LOW | Confidence below 70% — audit-only mode |
+| 31 | NO_ROLLBACK | No rollback mechanism available (install at or use systemd-run) |
+| 40 | PREFLIGHT_FAIL | Pre-flight checks failed |
+| 41 | PLAN_MISMATCH | Plan approval token mismatch — re-run PLAN |
+| 42 | BACKUP_FAIL | Could not create backup |
+| 50 | APPLY_FAIL | Rule application failed — auto-rollback triggered |
+| 51 | APPLY_PARTIAL | Partial apply — auto-rollback triggered |
+| 60 | VERIFY_FAIL | Post-apply verification failed |
+| 61 | STATE_CONFLICT | State file conflict — resolve stale state |

@@ -30,6 +30,18 @@ tags: [security, firewall, ufw, iptables, nftables, firewalld, hardening, docker
 > **Support files**: `scripts/audit-firewall.sh` (run first), `scripts/firewall-plan.sh` (dry-run), `scripts/firewall-verify.sh` (post-apply).
 > Detailed backend guides, Docker/K8s policies, observability, compliance, and recovery are in `references/`.
 
+## 🚨 Emergency: I'm Locked Out — What Now?
+
+If you just applied firewall rules and lost SSH connectivity:
+
+1. **Wait 5 minutes** — the auto-rollback timer (scheduled during VALIDATE) will restore access. Don't panic and don't take destructive actions.
+2. **Use your second SSH session** — if you opened one (pre-flight checklist), switch to it and fix the rules manually.
+3. **Cloud serial console** — AWS EC2 Serial Console, GCP Serial Port, Azure Serial Console, or hypervisor VNC/IPMI/iDRAC.
+4. **Restore from backup via console** — once connected: `sudo iptables-restore < ~/firewall-backup-*/iptables-v4.rules`
+5. **Emergency ACCEPT (LAST RESORT)** — `sudo iptables -P INPUT ACCEPT; sudo iptables -F; sudo ufw disable`. This exposes the host completely. Re-harden immediately.
+
+Full procedures: `references/recovery.md`.
+
 ---
 
 ## Prerequisites
@@ -184,14 +196,43 @@ echo "Backup saved to $BACKUP_DIR"
 
 #### 2. Schedule Rollback (Mandatory for Remote)
 
-The rollback restores from backup — not just disables the firewall — so Docker NAT and pre-existing rules are preserved. Dual-backend: `at` preferred, `systemd-run` fallback. Full script in SKILL.md under Validate state (see previous version), also summarized in `references/recovery.md`.
+The rollback restores from backup — not just disables the firewall — so Docker NAT and pre-existing rules are preserved. Dual-backend: `at` preferred, `systemd-run` fallback.
+
+```bash
+# Build rollback script from backup dir
+ROLLBACK_SCRIPT=$(cat <<'RB'
+#!/bin/bash
+BACKUP_DIR="REPLACE_ME"
+[ -f "$BACKUP_DIR/iptables-v4.rules" ] && sudo iptables-restore < "$BACKUP_DIR/iptables-v4.rules" || { sudo iptables -P INPUT ACCEPT; sudo iptables -F; }
+[ -f "$BACKUP_DIR/iptables-v6.rules" ] && sudo ip6tables-restore < "$BACKUP_DIR/iptables-v6.rules" || { sudo ip6tables -P INPUT ACCEPT; sudo ip6tables -F; }
+[ -f "$BACKUP_DIR/nftables.rules" ] && sudo nft -f "$BACKUP_DIR/nftables.rules" || sudo nft flush ruleset
+systemctl is-active ufw &>/dev/null && sudo ufw disable
+sudo firewall-cmd --panic-off 2>/dev/null
+RB
+)
+ROLLBACK_SCRIPT="${ROLLBACK_SCRIPT/REPLACE_ME/$BACKUP_DIR}"
+
+# Schedule (at preferred, systemd-run fallback)
+if command -v at &>/dev/null; then
+    ROLLBACK_JOB_ID=$(echo "sudo bash -c '$ROLLBACK_SCRIPT'" | at now + 5 minutes 2>&1 | grep -oP 'job \K\d+')
+    echo "Rollback scheduled: at job $ROLLBACK_JOB_ID (cancel with: atrm $ROLLBACK_JOB_ID)"
+elif command -v systemd-run &>/dev/null; then
+    UNIT_NAME="firewall-rollback-$$"
+    echo "$ROLLBACK_SCRIPT" > /tmp/firewall-rollback-$$.sh
+    chmod +x /tmp/firewall-rollback-$$.sh
+    systemd-run --on-active=5m --unit="$UNIT_NAME" --user /tmp/firewall-rollback-$$.sh
+    echo "Rollback scheduled: systemd unit $UNIT_NAME (cancel with: systemctl --user stop $UNIT_NAME)"
+fi
+```
+
+See `references/recovery.md` for advanced recovery scenarios.
 
 #### 3. Pre-Flight Checklist
 
 - [ ] Backup created successfully
 - [ ] Rollback scheduled (verify with `atq` or `systemctl --user list-units`)
-- [ ] Second SSH session open and idle
-- [ ] Real SSH port identified
+- [ ] **Second SSH session open and tested** — open a second terminal, SSH in, and confirm you can run `sudo whoami`. This is your emergency console if the primary session loses connectivity. Keep it open until VERIFY passes. **Why**: existing ESTABLISHED conntrack entries usually keep your current session alive, but if conntrack is flushed or the policy change drops your session silently, this second session is your only way back in.
+- [ ] Real SSH port identified (not assumed to be 22)
 - [ ] Confidence ≥ 70% and risk_tier is `auto` or `confirmed`
 - [ ] Ownership verified — no IaC managing firewall
 - [ ] Change window appropriate (maintenance window or low traffic)
@@ -242,7 +283,12 @@ bash scripts/firewall-verify.sh
 **Verify behavior contract:**
 - Verify MUST complete within the rollback timer window (default 5 min)
 - If verify times out before completion → timer auto-fires rollback (system-level protection)
-- If verify FAILS but timer was already cancelled → manual rollback: `bash scripts/manual-rollback.sh <backup_dir>`
+- If verify FAILS but timer was already cancelled → manual rollback from the backup directory. Restore commands (in priority order):
+  1. `sudo iptables-restore < "$BACKUP_DIR/iptables-v4.rules"`
+  2. `sudo ip6tables-restore < "$BACKUP_DIR/iptables-v6.rules"`
+  3. `sudo nft -f "$BACKUP_DIR/nftables.rules"`
+  4. `sudo ufw reset && sudo ufw disable`
+  See `references/recovery.md` for full recovery procedures including emergency ACCEPT fallback.
 - The rollback is triggered by the timer (systemd-run/at), NOT by verify.sh itself — verify.sh exits with code 60 to signal failure, and the calling agent/scheduler handles the rollback decision
 
 ## Exit Codes (Core Contract)
